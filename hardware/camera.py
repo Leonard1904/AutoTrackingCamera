@@ -59,10 +59,22 @@ class CameraManager:
         except Exception as e:
             print(f"  Recording camera error : {e}")
             return False
-
+    #   Without distortion correction
+    """
     def capture_recording_frame(self) -> Optional[np.ndarray]:
         if self.recording_cam:
             return self.recording_cam.capture_array()
+        return None
+    """
+
+    #   With distortion correction if the frame is valid
+    #   and that the calibration parameters are well loaded.
+    def capture_recording_frame(self) -> Optional[np.ndarray]:
+        if self.recording_cam:
+            frame = self.recording_cam.capture_array()
+            if frame is not None and self.camera_matrix is not None and self.dist_coeffs is not None:
+                frame = cv2.undistort(frame, self.camera_matrix, self.dist_coeffs)
+            return frame
         return None
 
     def stop_all(self):
