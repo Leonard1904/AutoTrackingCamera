@@ -32,13 +32,16 @@ class VideoRecorder:
     def set_detection_size(self, w: int, h: int) -> None:
         if w > 0 and h > 0: self._det_actual_size = (w, h)
 
-    def start(self) -> str:
+    def start(self, actual_fps: float = None) -> str:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.video_id = f"recording_{ts}"
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        #
+        fps = actual_fps if (actual_fps is not None and actual_fps >= 5.0) else self.config.recording_fps
+        
         path_rec = os.path.join(self.config.output_dir, f"{self.video_id}_cam1_recording.mp4")
         
-        self.writer_rec = cv2.VideoWriter(path_rec, fourcc, self.config.recording_fps, self.config.recording_resolution)
+        self.writer_rec = cv2.VideoWriter(path_rec, fourcc, fps, self.config.recording_resolution)
         
         csv_path = os.path.join(self.config.output_dir, f"{self.video_id}.csv")
         self.csv_file = open(csv_path, "w", newline="", encoding="utf-8")
@@ -56,7 +59,7 @@ class VideoRecorder:
 
         self.write_thread = threading.Thread(target=self._writer_loop, daemon=True)
         self.write_thread.start()
-        print(f"   Recording started : {path_rec}")
+        print(f"   Enregistrement démarré : {path_rec}")
         return path_rec
 
     def _writer_loop(self):
@@ -77,7 +80,7 @@ class VideoRecorder:
                     ])
                 self.frame_queue.task_done()
             except queue.Empty: continue
-            except Exception as e: print(f"Video writing error : {e}")
+            except Exception as e: print(f"Erreur écriture vidéo : {e}")
 
     def write_frame(self, recording_frame: Optional[np.ndarray], detection_frame: Optional[np.ndarray], metadata: dict) -> None:
         if not self.recording or self.paused: return
@@ -90,23 +93,23 @@ class VideoRecorder:
         if self.recording and not self.paused:
             self.paused = True
             self.pause_time = time.time()
-            print("  Recording paused")
+            print("  Enregistrement en pause")
 
     def resume(self):
         if self.recording and self.paused:
             self.paused_duration += time.time() - self.pause_time
             self.pause_time = None
             self.paused = False
-            print("  Recording resumed")
+            print("  Enregistrement repris")
 
     def stop(self):
         if not self.recording: return
-        print("  Stopping, waiting for writing...")
+        print("  Arrêt en cours, attente de l'écriture...")
         self.recording = False
         if self.write_thread is not None: self.write_thread.join(timeout=2.0)
         if self.writer_rec is not None: self.writer_rec.release(); self.writer_rec = None
         if self.csv_file is not None: self.csv_file.close(); self.csv_file = None
-        print(f"  Recording stopped : {self.frame_count} frames recorded")
+        print(f"  Enregistrement arrêté : {self.frame_count} frames enregistrées")
 
     def get_duration(self) -> int:
         if not self.start_time: return 0

@@ -2,7 +2,6 @@ from dataclasses import dataclass
 
 @dataclass
 class SystemConfig:
-    """Full system configuration."""
     # Cameras
     detection_camera_index: int = 0
     recording_camera_index: int = 1
@@ -11,12 +10,12 @@ class SystemConfig:
     detection_fps: int = 30
     recording_fps: int = 30  
 
-    # Hailo-8 model
+    # Hailo-8
     hef_path: str = "models/yolov8s.hef"
     hailo_input: str = "rpi"
     hailo_frame_skip: int = 2
 
-    # Servo motor
+    # Servo
     servo_channel: int = 0
     servo_min_angle: float = 0.0
     servo_max_angle: float = 180.0
@@ -27,20 +26,20 @@ class SystemConfig:
     fov_recording_horizontal: float = 41.0
 
     # Mechanical offset (degrees)
-    mechanical_offset: float = 0.0
+    mechanical_offset: float = 7.0
 
-    # Tracking parameters
+    # Tracking
     proximity_threshold: int = 150
-    center_deadzone: int = 2  
+    center_deadzone: int = 40.0  
 
-    # Ball center weighting
+    # Center of mass weighting
     ball_weight: float = 7.0
     person_weight: float = 1.0
 
     # Progressive center return (px/frame)
-    center_return_speed: float = 0.05
+    center_return_speed: float = 0.5
 
-    # Output directory
+    # Output
     output_dir: str = "enregistrements"
     version: str = "1.0"
 

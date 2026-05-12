@@ -10,7 +10,7 @@ class DisplayManager:
     def __init__(self, config: SystemConfig):
         self.config = config
         self.window_detection = "Camera 0 - Detection"
-        self.window_recording = "Camera 1 - Recording"
+        self.window_recording = "Camera 1 - Enregistrement"
         self.show_boxes = True
         self.show_target = True
 
@@ -40,12 +40,16 @@ class DisplayManager:
         bg = frame.copy()
         cv2.rectangle(bg, (10, 55), (410, 250), (0, 0, 0), -1)
         cv2.addWeighted(bg, 0.55, frame, 0.45, 0, frame)
+        loop_fps = servo_info.get("loop_fps", 0.0)
 
         cv2.putText(frame, f"FPS : {fps:.1f}", (20, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         cv2.putText(frame, f"Servo : {servo_info.get('angle', 90):.1f} {servo_info.get('direction', '')}", (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
         cv2.putText(frame, f"Speed : {servo_info.get('speed', 0):.2f}", (20, 152), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+    
+        if loop_fps > 0: cv2.putText(frame, f"Loop FPS : {loop_fps: .1f}",(20, 185),
+                                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 0), 2)
 
-        if not recorder.recording: status, col = "READY", (0, 255, 0)
+        if not recorder.recording: status, col = "PRET", (0, 255, 0)
         elif recorder.paused: status, col = "PAUSE", (0, 165, 255)
         else: status, col = "REC", (0, 0, 255)
 

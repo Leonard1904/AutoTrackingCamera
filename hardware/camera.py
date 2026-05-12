@@ -25,7 +25,6 @@ from config import SystemConfig
 from core.datatypes import DetectionResult
 
 class CameraManager:
-    """Manage the recording camera (Picamera2)."""
 
     def __init__(self, config: SystemConfig):
         self.config = config
@@ -34,17 +33,17 @@ class CameraManager:
         self.dist_coeffs = None
 
     def start_recording_camera(self) -> bool:
-        print(" Loading calibration parameters...")
+        print(" Chargement des paramètres de calibration...")
         try:
             self.camera_matrix = np.load(self.config.calibration_matrix_path)
             self.dist_coeffs = np.load(self.config.calibration_coeffs_path)
-            print(" Calibration loaded - distortion correction enabled")
+            print(" Calibration chargée - correction de distorsion activée")
         except Exception:
             self.camera_matrix = None
             self.dist_coeffs = None
-            print(" Calibration files not found - distortion not corrected")
+            print(" Fichiers de calibration introuvables - distorsion non corrigée")
 
-        print(f"  Recording camera initialization (index {self.config.recording_camera_index})...")
+        print(f"  Initialisation caméra enregistrement (index {self.config.recording_camera_index})...")
         try:
             self.recording_cam = Picamera2(self.config.recording_camera_index)
             cam_config = self.recording_cam.create_preview_configuration(
@@ -54,21 +53,21 @@ class CameraManager:
             self.recording_cam.configure(cam_config)
             self.recording_cam.start()
             time.sleep(1.0)
-            print("  Recording camera ready")
+            print("  Caméra enregistrement prête")
             return True
         except Exception as e:
-            print(f"  Recording camera error : {e}")
+            print(f"  Erreur caméra enregistrement : {e}")
             return False
-    #   Without distortion correction
-    """
-    def capture_recording_frame(self) -> Optional[np.ndarray]:
-        if self.recording_cam:
-            return self.recording_cam.capture_array()
-        return None
-    """
 
-    #   With distortion correction if the frame is valid
-    #   and that the calibration parameters are well loaded.
+    #   Without distortion correction applied
+
+    # def capture_recording_frame(self) -> Optional[np.ndarray]:
+    #     if self.reocrding_cam:
+    #         return self.recording_cam.capture_array()
+    #     return None
+    
+    #   Apply distortion correction if the frame is valid
+    #   and the calibration parameters have been successfully loaded.    
     def capture_recording_frame(self) -> Optional[np.ndarray]:
         if self.recording_cam:
             frame = self.recording_cam.capture_array()
@@ -81,7 +80,6 @@ class CameraManager:
         if self.recording_cam:
             self.recording_cam.stop()
             self.recording_cam.close()
-
 
 # --- HAILO GLOBALS & CALLBACKS ---
 _hailo_lock = threading.Lock()
@@ -123,7 +121,7 @@ def cleanup_hailo_pipeline() -> None:
 atexit.register(cleanup_hailo_pipeline)
 
 def _force_restart_hailo_driver() -> bool:
-    print("  Restarting Hailo driver...")
+    print("  Redémarrage du driver Hailo...")
     try:
         subprocess.run(["sudo", "pkill", "-f", "gst-launch"], timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(2)
@@ -134,17 +132,17 @@ def _force_restart_hailo_driver() -> bool:
         subprocess.run(["sudo", "modprobe", "hailo"], timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(3)
     except Exception as e:
-        print(f"  Warning Hailo restart : {e}")
+        print(f"  Attention redémarrage Hailo : {e}")
     return os.path.exists("/dev/hailo0")
 
 def ensure_hailo_ready() -> bool:
-    print("  Checking Hailo-8...")
+    print("  Vérification Hailo-8...")
     if not os.path.exists("/dev/hailo0"):
-        print("  /dev/hailo0 absent — restart driver attempt...")
+        print("  /dev/hailo0 absent — tentative de redémarrage du driver...")
         if not _force_restart_hailo_driver():
             return False
     time.sleep(1)
-    print("  Hailo-8 ready")
+    print("  Hailo-8 prêt")
     return True
 
 class _HailoUserData(app_callback_class):
@@ -175,16 +173,23 @@ def _hailo_callback(pad, info, user_data: _HailoUserData):
     if width is None or height is None: return Gst.PadProbeReturn.OK
 
     _hailo_stream_w, _hailo_stream_h = int(width), int(height)
-    frame = get_numpy_from_buffer(buffer, fmt, width, height) if user_data.use_frame and fmt else None
+
+    frame = None
+    if user_data.use_frame and fmt and width and height:
+        frame = get_numpy_from_buffer(buffer, fmt, width, height) 
 
     roi = hailo.get_roi_from_buffer(buffer)
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
 
-    person_centers, boxes, ball_center = [], [], None
+    person_centers: list[tuple[int, int]] = []
+    ball_center: Optional[tuple[int, int]] = None
+    boxes: list[tuple[int, int, int, int, str, float]] = []
+    
     w, h = int(width), int(height)
     for det in detections:
         label = det.get_label()
-        if label not in ("person", "sports ball"): continue
+        if label not in ("person"): # Add “sports ball” to the condition to track the ball
+            continue
         bbox = det.get_bbox()
         conf = float(det.get_confidence())
         x1, y1 = int(bbox.xmin() * w), int(bbox.ymin() * h)
@@ -194,14 +199,12 @@ def _hailo_callback(pad, info, user_data: _HailoUserData):
         if label == "person": person_centers.append((cx, cy))
         else: ball_center = (cx, cy)
 
-    latest = cv2.cvtColor(np.copy(frame), cv2.COLOR_RGB2BGR) if frame is not None else None
-
     with _hailo_lock:
         global _hailo_person_centers, _hailo_ball_center, _hailo_boxes, _hailo_latest_frame
         _hailo_person_centers = person_centers
         _hailo_ball_center = ball_center
         _hailo_boxes = boxes
-        if latest is not None: _hailo_latest_frame = latest
+        if frame is not None: _hailo_latest_frame = np.copy(frame)
 
     return Gst.PadProbeReturn.OK
 
@@ -216,7 +219,7 @@ class HailoDetector:
         
         hef = Path(self.config.hef_path).resolve()
         if not hef.is_file():
-            print(f"  .hef file not found : {hef}")
+            print(f"  Fichier .hef introuvable : {hef}")
             return False
 
         Gst.init(None)
@@ -230,17 +233,17 @@ class HailoDetector:
         try:
             _hailo_app = GStreamerDetectionApp(_hailo_callback, self.user_data, parser)
         except Exception as e:
-            print(f"  Hailo pipeline creation error : {e}")
+            print(f"  Erreur création pipeline Hailo : {e}")
             return False
 
         def _run():
             try: _hailo_app.run()
-            except Exception as ex: print(f"  Hailo pipeline stopped : {ex}")
+            except Exception as ex: print(f"  Pipeline Hailo arrêté : {ex}")
 
         _hailo_pipeline_thread = threading.Thread(target=_run, daemon=True)
         _hailo_pipeline_thread.start()
         time.sleep(2.0)
-        print(f"  Hailo pipeline started — {hef.name}")
+        print(f"  Pipeline Hailo démarré — {hef.name}")
         return True
 
     def detect(self) -> DetectionResult:
@@ -249,7 +252,9 @@ class HailoDetector:
 
     def get_latest_frame_copy(self) -> Optional[np.ndarray]:
         with _hailo_lock:
-            return np.copy(_hailo_latest_frame) if _hailo_latest_frame is not None else None
+            if _hailo_latest_frame is None:
+                return None
+            return cv2.cvtColor(np.copy(_hailo_latest_frame), cv2.COLOR_RGB2BGR)
 
     def get_stream_size(self) -> tuple[int, int]:
         with _hailo_lock:
